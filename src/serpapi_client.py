@@ -6,6 +6,79 @@ logger = logging.getLogger(__name__)
 
 SERPAPI_URL = "https://serpapi.com/search"
 
+# Overrides and common suffixes for extracting short city names from airport names
+_CITY_OVERRIDES = {
+    "NRT": "Tóquio", "HND": "Tóquio", "KIX": "Osaka", "ITM": "Osaka",
+    "NGO": "Nagoya", "FUK": "Fukuoka", "CTS": "Sapporo", "OKA": "Okinawa",
+    "GRU": "São Paulo", "CGH": "São Paulo", "VCP": "Campinas",
+    "GIG": "Rio de Janeiro", "SDU": "Rio de Janeiro",
+    "BSB": "Brasília", "SSA": "Salvador", "FOR": "Fortaleza",
+    "REC": "Recife", "MAN": "Manaus", "BEL": "Belém",
+    "LAX": "Los Angeles", "JFK": "Nova York", "MIA": "Miami",
+    "ORD": "Chicago", "ATL": "Atlanta", "DFW": "Dallas",
+    "LHR": "Londres", "CDG": "Paris", "AMS": "Amsterdã",
+    "FRA": "Frankfurt", "MAD": "Madri", "FCO": "Roma",
+    "DXB": "Dubai", "DOH": "Doha", "IST": "Istambul",
+    "SIN": "Singapura", "HKG": "Hong Kong", "ICN": "Seul",
+    "PEK": "Pequim", "PVG": "Xangai", "BKK": "Bangkok",
+    "SYD": "Sydney", "MEL": "Melbourne",
+}
+
+_NAME_SUFFIXES = (
+    " International Airport", " Airport", " International", " Intl",
+)
+
+JAPAN_AIRPORTS = {
+    "NRT", "HND", "KIX", "ITM", "NGO", "FUK", "CTS", "OKA",
+    "KMJ", "OIT", "KOJ", "SDJ", "HIJ", "TAK",
+}
+
+
+def _city_name(airport_id: str, airport_name: str) -> str:
+    """Return a short Portuguese city name for an airport."""
+    if airport_id in _CITY_OVERRIDES:
+        return _CITY_OVERRIDES[airport_id]
+    if "/" in airport_name:
+        return airport_name.split("/")[0].strip()
+    for suffix in _NAME_SUFFIXES:
+        if airport_name.endswith(suffix):
+            return airport_name[: -len(suffix)].strip()
+    return airport_name
+
+
+def _summarize_legs(legs: list[dict]) -> dict:
+    if not legs:
+        return {}
+    city_map: dict[str, str] = {}
+    for leg in legs:
+        for key in ("departure_airport", "arrival_airport"):
+            ap = leg.get(key, {})
+            code = ap.get("id", "")
+            if code and code not in city_map:
+                city_map[code] = _city_name(code, ap.get("name", ""))
+
+    codes = (
+        [legs[0]["departure_airport"]["id"]]
+        + [leg["arrival_airport"]["id"] for leg in legs]
+    )
+    route = " → ".join(
+        f"{c} ({city_map[c]})" if city_map.get(c) else c for c in codes
+    )
+    total_min = sum(leg.get("duration", 0) for leg in legs)
+    airlines = list(dict.fromkeys(
+        leg.get("airline", "") for leg in legs if leg.get("airline")
+    ))
+    return {
+        "route": route,
+        "connections": codes[1:-1],
+        "airlines": airlines,
+        "flight_numbers": [leg.get("flight_number", "") for leg in legs],
+        "departure": legs[0]["departure_airport"].get("time", ""),
+        "arrival": legs[-1]["arrival_airport"].get("time", ""),
+        "duration_str": f"{total_min // 60}h{total_min % 60:02d}m",
+        "num_stops": len(legs) - 1,
+    }
+
 
 class SerpAPIError(Exception):
     def __init__(self, status_code: int, message: str):
@@ -86,12 +159,6 @@ class SerpAPIClient:
         return_date: str,
         arrival_id: str,
     ) -> list[dict]:
-        # All major Japanese airport codes
-        JAPAN_AIRPORTS = {
-            "NRT", "HND", "KIX", "ITM", "NGO", "FUK", "CTS", "OKA",
-            "KMJ", "OIT", "KOJ", "SDJ", "HIJ", "TAK",
-        }
-
         offers = []
         all_flights = data.get("best_flights", []) + data.get("other_flights", [])
 
@@ -117,36 +184,12 @@ class SerpAPIClient:
                 else:
                     return_legs.append(leg)
 
-            def summarize_legs(legs: list[dict]) -> dict:
-                if not legs:
-                    return {}
-                airports = (
-                    [legs[0]["departure_airport"]["id"]]
-                    + [leg["arrival_airport"]["id"] for leg in legs]
-                )
-                total_min = sum(leg.get("duration", 0) for leg in legs)
-                airlines = list(dict.fromkeys(
-                    leg.get("airline", "") for leg in legs if leg.get("airline")
-                ))
-                return {
-                    "route": " → ".join(airports),
-                    "connections": airports[1:-1],
-                    "airlines": airlines,
-                    "flight_numbers": [leg.get("flight_number", "") for leg in legs],
-                    "departure": legs[0]["departure_airport"].get("time", ""),
-                    "arrival": legs[-1]["arrival_airport"].get("time", ""),
-                    "duration_str": f"{total_min // 60}h{total_min % 60:02d}m",
-                    "num_stops": len(legs) - 1,
-                }
-
-            out_summary = summarize_legs(outbound_legs)
-            ret_summary = summarize_legs(return_legs)
-
             dest_airport = (
                 outbound_legs[-1]["arrival_airport"]["id"] if outbound_legs else arrival_id
             )
-            dest_city = (
-                outbound_legs[-1]["arrival_airport"].get("name", "") if outbound_legs else ""
+            dest_city = _city_name(
+                dest_airport,
+                outbound_legs[-1]["arrival_airport"].get("name", "") if outbound_legs else "",
             )
 
             offers.append({
@@ -155,8 +198,8 @@ class SerpAPIClient:
                 "return_date": return_date,
                 "destination_airport": dest_airport,
                 "destination_name": dest_city,
-                "outbound": out_summary,
-                "return_leg": ret_summary,
+                "outbound": _summarize_legs(outbound_legs),
+                "return_leg": _summarize_legs(return_legs),
                 "carbon_emissions": item.get("carbon_emissions", {}).get("this_flight"),
             })
 
