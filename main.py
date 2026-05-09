@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, timezone
 
 from src import config
-from src.amadeus_client import AmadeusClient
+from src.tequila_client import TequilaClient
 from src.agent import run_agent
 from src.whatsapp_sender import send_whatsapp, WhatsAppSendError
 
@@ -19,10 +19,10 @@ def main() -> int:
     run_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     logger.info("Flight search agent starting — %s", run_ts)
 
-    amadeus = AmadeusClient(config.AMADEUS_CLIENT_ID, config.AMADEUS_CLIENT_SECRET)
+    tequila = TequilaClient(config.TEQUILA_API_KEY)
 
     try:
-        message_body = run_agent(amadeus, run_ts)
+        message_body = run_agent(tequila, run_ts)
         logger.info("Agent completed. Message length: %d chars", len(message_body))
     except Exception as exc:
         logger.error("Agent failed: %s", exc, exc_info=True)

@@ -5,30 +5,23 @@ load_dotenv()
 
 # Trip parameters
 ORIGIN = "BSB"
+DESTINATION = "JP"  # Tequila accepts country codes — covers all Japanese airports
 ADULTS = 2
-MIN_DURATION_DAYS = 21
-MAX_DURATION_DAYS = 30
+MIN_NIGHTS = 21
+MAX_NIGHTS = 30
 
-# Japanese airports to search
-JAPAN_AIRPORTS = ["TYO", "OSA", "NGO", "FUK", "SPK"]
+# Search window: Sep–Dec 2026 (DD/MM/YYYY — Tequila format)
+DATE_FROM = "01/09/2026"
+DATE_TO = "30/11/2026"   # latest departure that allows a 21-day trip ending by Dec 31
+RETURN_FROM = "22/09/2026"  # earliest possible return (Sep 1 + 21 days)
+RETURN_TO = "31/12/2026"
 
-# Months to search (Sep–Dec 2026)
-SEARCH_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12"]
-
-# Top N cheapest date pairs to drill into per destination
-MAX_DATES_PER_DESTINATION = 3
-
-# Number of offers to show in the final message
+# Number of offers to surface in the final message
 TOP_OFFERS = 5
-
-# Amadeus API
-AMADEUS_BASE_URL = "https://test.api.amadeus.com"
-AMADEUS_AUTH_URL = "https://test.api.amadeus.com/v1/security/oauth2/token"
 
 # Secrets from environment
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-AMADEUS_CLIENT_ID = os.environ["AMADEUS_CLIENT_ID"]
-AMADEUS_CLIENT_SECRET = os.environ["AMADEUS_CLIENT_SECRET"]
+TEQUILA_API_KEY = os.environ["TEQUILA_API_KEY"]
 TWILIO_ACCOUNT_SID = os.environ["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN = os.environ["TWILIO_AUTH_TOKEN"]
 TWILIO_WHATSAPP_FROM = os.environ["TWILIO_WHATSAPP_FROM"]
