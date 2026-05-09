@@ -20,7 +20,7 @@ class SerpAPIClient:
     def _request_with_retry(self, params: dict) -> requests.Response:
         for attempt in range(3):
             try:
-                resp = requests.get(SERPAPI_URL, params=params, timeout=30)
+                resp = requests.get(SERPAPI_URL, params=params, timeout=45)
                 if resp.status_code == 429:
                     wait = 2 ** attempt
                     logger.warning("Rate limited, waiting %ds", wait)
