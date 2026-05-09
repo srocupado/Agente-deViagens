@@ -12,18 +12,10 @@ from São Paulo Guarulhos (GRU) to Japan, Sep–Dec 2026, {config.ADULTS} adults
 
 ## Search strategy
 
-SerpApi quota: 100 calls/month — make at most 2 calls per run.
-Departure window: {config.SEARCH_WINDOW_START} to {config.SEARCH_WINDOW_END}.
-Return date must be 21–30 days after departure, no later than 2026-12-31.
-
-Suggested calls:
-1. NRT (Tokyo Narita), departure ~2026-10-10, return ~2026-11-04 (25 nights).
-2. KIX (Osaka Kansai), departure ~2026-09-25, return ~2026-10-20 — only if first result > R$ 12.000/pessoa.
-
-IMPORTANT: Use specific airport codes (NRT, HND, KIX, NGO, FUK).
+SerpApi quota: 100 calls/month — make exactly 1 call per run using the
+airport code and dates provided in the user message. Do not change the dates.
+IMPORTANT: Use the exact airport code given (NRT, KIX, HND, NGO, FUK).
 Do NOT use city codes like TYO or OSA — they return no results.
-
-Vary dates slightly based on the run timestamp to explore the full window over time.
 
 ## Output format
 
@@ -52,7 +44,13 @@ Atenção: preços saindo de GRU (Guarulhos). Quem parte de BSB deve incluir BSB
 If no results: say so clearly. Return ONLY the final email — no explanation, no code blocks."""
 
 
-def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
+def run_agent(
+    serpapi_client: SerpAPIClient,
+    run_timestamp: str,
+    arrival_id: str,
+    outbound_date: str,
+    return_date: str,
+) -> str:
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     system = SYSTEM_PROMPT.replace("[timestamp]", run_timestamp)
 
@@ -61,9 +59,11 @@ def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
             "role": "user",
             "content": (
                 f"Current time: {run_timestamp}. "
-                f"Search for the cheapest round-trip flights GRU → Japan "
-                f"(Sep–Dec 2026, {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights, "
-                f"{config.ADULTS} adults) and return the formatted email body."
+                f"Search for round-trip flights GRU → {arrival_id} "
+                f"departing {outbound_date}, returning {return_date} "
+                f"({config.ADULTS} adults). "
+                "Use exactly these dates — do not change them. "
+                "Return the formatted email body."
             ),
         }
     ]
