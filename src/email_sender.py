@@ -19,16 +19,19 @@ def send_email(
     gmail_app_password: str,
     recipient_email: str,
 ) -> None:
+    # recipient_email accepts comma-separated addresses: "a@x.com,b@x.com"
+    recipients = [r.strip() for r in recipient_email.split(",") if r.strip()]
+
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = gmail_user
-    msg["To"] = recipient_email
+    msg["To"] = ", ".join(recipients)
     msg.set_content(body)
 
     try:
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
             smtp.login(gmail_user, gmail_app_password)
             smtp.send_message(msg)
-        logger.info("Email sent to %s", recipient_email)
+        logger.info("Email sent to %s", ", ".join(recipients))
     except smtplib.SMTPException as exc:
         raise EmailSendError(f"SMTP error: {exc}") from exc
