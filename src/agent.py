@@ -6,51 +6,59 @@ from src import config
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = f"""You are a flight search assistant. Search for cheap round-trip flights
-from São Paulo Guarulhos (GRU) to Japan, Sep–Dec 2026, {config.ADULTS} adults,
-{config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights.
+SYSTEM_PROMPT = f"""You are a flight search assistant helping two travelers find the cheapest
+round-trip flights from São Paulo (GRU) to Japan between September and December 2026.
+Trip duration: {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights. Travelers: {config.ADULTS} adults.
 
 ## Search strategy
 
-SerpApi quota: 100 calls/month — make exactly 1 call per run using the
-airport code and dates provided in the user message. Do not change the dates.
-IMPORTANT: Use the exact airport code given (NRT, KIX, HND, NGO, FUK).
-Do NOT use city codes like TYO or OSA — they return no results.
+You have a limited SerpApi quota (100 calls/month). Make at most 2 calls per run.
+
+Choose departure dates from the window {config.SEARCH_WINDOW_START} to {config.SEARCH_WINDOW_END}.
+Return dates must be 21–30 days after departure, no later than 2026-12-31.
+
+Suggested approach:
+1. First call: NRT (Tokyo Narita) with a mid-October departure (e.g. 2026-10-10, return 2026-11-04 = 25 nights).
+   October is typically cheaper for GRU→Japan routes.
+2. Optional second call: KIX (Osaka Kansai) with a late-September departure
+   (e.g. 2026-09-25, return 2026-10-20) if the first result seems expensive (> R$ 12.000/pessoa).
+
+IMPORTANT: Always use specific airport codes — NRT, HND, KIX, NGO, FUK.
+Do NOT use city codes like TYO or OSA — they return no results in this API.
+
+Based on the run timestamp, vary the dates slightly to explore the full window over time.
 
 ## Output format
 
-The tool returns pre-formatted flight cards between <<< CARD N >>> markers.
-Your ONLY job is to assemble the email by placing those cards between the header and footer below.
-Copy each card CHARACTER FOR CHARACTER — do not change, reorder, translate, or reformat anything inside the cards.
+After collecting results, compile the {config.TOP_OFFERS} cheapest unique options and format a
+plain-text email body (no markdown asterisks, backticks, or bold syntax).
 
-Write exactly:
+Use exactly this structure:
 
 ✈️ TOP {config.TOP_OFFERS} PASSAGENS GRU → JAPÃO
 Período: set–dez 2026 | 2 adultos | {config.MIN_NIGHTS}–{config.MAX_NIGHTS} noites
-Atenção: preços saindo de GRU (Guarulhos). Quem parte de BSB deve incluir BSB→GRU.
+(adicione uma nota: passagens saindo de GRU; quem parte de BSB precisa incluir BSB→GRU)
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🏆 #1
-[paste CARD 1 here, character for character]
+For each option (cheapest first):
 
-🏆 #2
-[paste CARD 2 here, character for character]
-
-(continue for all cards)
+🏆 #N — [Cidade] ([código])
+💰 R$ [preço total] · R$ [preço/pessoa]/pessoa
+📅 Ida: [YYYY-MM-DD]   Volta: [YYYY-MM-DD]
+🛫 Ida: [rota completa ex: GRU → NRT] ([duração])
+🛬 Volta: [rota completa ex: NRT → GRU] ([duração])
+✈️  [companhias aéreas]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🤖 Agente de Viagens · [timestamp]
 
-If no results: say so clearly. Return ONLY the final email — no explanation, no code blocks."""
+Rules:
+- Route must list every airport in the itinerary
+- If no results are found, say so clearly
+- Return ONLY the formatted message — no extra explanation or code blocks"""
 
 
-def run_agent(
-    serpapi_client: SerpAPIClient,
-    run_timestamp: str,
-    arrival_id: str,
-    outbound_date: str,
-    return_date: str,
-) -> str:
+def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     system = SYSTEM_PROMPT.replace("[timestamp]", run_timestamp)
 
@@ -59,11 +67,9 @@ def run_agent(
             "role": "user",
             "content": (
                 f"Current time: {run_timestamp}. "
-                f"Search for round-trip flights GRU → {arrival_id} "
-                f"departing {outbound_date}, returning {return_date} "
-                f"({config.ADULTS} adults). "
-                "Use exactly these dates — do not change them. "
-                "Return the formatted email body."
+                f"Search for the cheapest round-trip flights GRU → Japan "
+                f"(Sep–Dec 2026, {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights, "
+                f"{config.ADULTS} adults) and return the formatted email body."
             ),
         }
     ]
