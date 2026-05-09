@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from src import config
 from src.serpapi_client import SerpAPIClient
 from src.agent import run_agent
-from src.whatsapp_sender import send_whatsapp, WhatsAppSendError
+from src.email_sender import send_email, EmailSendError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,26 +22,24 @@ def main() -> int:
     serpapi = SerpAPIClient(config.SERPAPI_API_KEY)
 
     try:
-        message_body = run_agent(serpapi, run_ts)
-        logger.info("Agent completed. Message length: %d chars", len(message_body))
+        body = run_agent(serpapi, run_ts)
+        logger.info("Agent completed. Message length: %d chars", len(body))
     except Exception as exc:
         logger.error("Agent failed: %s", exc, exc_info=True)
-        message_body = (
-            f"⚠️ Agente de Viagens — ERRO\n\n"
-            f"Falha na execução em {run_ts}.\n\nDetalhe: {exc}"
-        )
+        body = f"Falha na execução em {run_ts}.\n\nDetalhe: {exc}"
+
+    subject = f"✈️ Passagens BSB → Japão — {run_ts[:10]}"
 
     try:
-        send_whatsapp(
-            body_text=message_body,
-            account_sid=config.TWILIO_ACCOUNT_SID,
-            auth_token=config.TWILIO_AUTH_TOKEN,
-            from_number=config.TWILIO_WHATSAPP_FROM,
-            to_number=config.WHATSAPP_TO,
+        send_email(
+            subject=subject,
+            body=body,
+            gmail_user=config.GMAIL_USER,
+            gmail_app_password=config.GMAIL_APP_PASSWORD,
+            recipient_email=config.RECIPIENT_EMAIL,
         )
-        logger.info("WhatsApp message sent to %s", config.WHATSAPP_TO)
-    except WhatsAppSendError as exc:
-        logger.error("WhatsApp send failed: %s", exc, exc_info=True)
+    except EmailSendError as exc:
+        logger.error("Email send failed: %s", exc, exc_info=True)
         return 1
 
     return 0

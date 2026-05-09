@@ -16,13 +16,12 @@ JAPAN_AIRPORTS = ["NRT", "HND", "KIX", "NGO", "FUK"]
 SEARCH_WINDOW_START = "2026-09-01"
 SEARCH_WINDOW_END = "2026-11-30"
 
-# Number of offers to surface in the final message
+# Number of offers to surface in the final email
 TOP_OFFERS = 5
 
 # Secrets from environment
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 SERPAPI_API_KEY = os.environ["SERPAPI_API_KEY"]
-TWILIO_ACCOUNT_SID = os.environ["TWILIO_ACCOUNT_SID"]
-TWILIO_AUTH_TOKEN = os.environ["TWILIO_AUTH_TOKEN"]
-TWILIO_WHATSAPP_FROM = os.environ["TWILIO_WHATSAPP_FROM"]
-WHATSAPP_TO = os.environ["WHATSAPP_TO"]
+GMAIL_USER = os.environ["GMAIL_USER"]
+GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
+RECIPIENT_EMAIL = os.environ["RECIPIENT_EMAIL"]
