@@ -45,8 +45,8 @@ For each option (cheapest first):
 🏆 #N — [Cidade] ([código])
 💰 R$ [preço total] · R$ [preço/pessoa]/pessoa
 📅 Ida: [YYYY-MM-DD]   Volta: [YYYY-MM-DD]
-🛫 Ida: [rota completa ex: GRU → NRT] ([duração])
-🛬 Volta: [rota completa ex: NRT → GRU] ([duração])
+🛫 Ida: [use o campo outbound.route exatamente como retornado, ex: GRU (São Paulo) → DFW (Dallas) → NRT (Tóquio)] ([duração])
+🛬 Volta: [use o campo return_leg.route exatamente como retornado, ex: NRT (Tóquio) → DFW (Dallas) → GRU (São Paulo)] ([duração])
 ✈️  [companhias aéreas]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━
