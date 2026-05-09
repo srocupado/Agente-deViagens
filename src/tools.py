@@ -1,6 +1,6 @@
 import json
 import logging
-from src.tequila_client import TequilaClient, TequilaAPIError
+from src.serpapi_client import SerpAPIClient, SerpAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -10,89 +10,69 @@ TOOLS = [
     {
         "name": "search_flights",
         "description": (
-            "Searches the Tequila (Kiwi.com) API for the cheapest round-trip flights "
-            "from Brasília (BSB) to any airport in Japan (country code JP). "
-            "Results are sorted by total price in BRL for 2 adults. "
-            "Call with a broad date window first, then optionally narrow down by sub-period."
+            "Search Google Flights (via SerpApi) for round-trip flights from Brasília (BSB) "
+            "to a Japanese airport for specific departure and return dates. "
+            "Returns flights sorted by total price in BRL for 2 adults. "
+            "IMPORTANT: Each call consumes 1 SerpApi credit (100/month free). "
+            "Make at most 2 calls per run, choosing the most informative date combinations."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "date_from": {
+                "arrival_id": {
                     "type": "string",
-                    "description": "Start of the departure date window in DD/MM/YYYY format, e.g. '01/09/2026'",
+                    "description": (
+                        "IATA code for Japan destination. Use city codes for multi-airport coverage: "
+                        "'TYO' (Tokyo — covers NRT and HND), 'OSA' (Osaka — covers KIX), "
+                        "'NGO' (Nagoya), 'FUK' (Fukuoka). Default: TYO"
+                    ),
                 },
-                "date_to": {
+                "outbound_date": {
                     "type": "string",
-                    "description": "End of the departure date window in DD/MM/YYYY format, e.g. '30/11/2026'",
+                    "description": "Departure date from BSB in YYYY-MM-DD format, e.g. '2026-09-20'",
                 },
-                "return_from": {
+                "return_date": {
                     "type": "string",
-                    "description": "Start of the return date window in DD/MM/YYYY format, e.g. '22/09/2026'",
-                },
-                "return_to": {
-                    "type": "string",
-                    "description": "End of the return date window in DD/MM/YYYY format, e.g. '31/12/2026'",
-                },
-                "nights_in_dst_from": {
-                    "type": "integer",
-                    "description": "Minimum nights at destination (default 21)",
-                    "default": 21,
-                },
-                "nights_in_dst_to": {
-                    "type": "integer",
-                    "description": "Maximum nights at destination (default 30)",
-                    "default": 30,
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return (default 10)",
-                    "default": 10,
+                    "description": (
+                        "Return date from Japan in YYYY-MM-DD format. "
+                        "Must be 21–30 days after outbound_date, e.g. '2026-10-15'"
+                    ),
                 },
             },
-            "required": ["date_from", "date_to", "return_from", "return_to"],
+            "required": ["arrival_id", "outbound_date", "return_date"],
         },
     }
 ]
 
 
 def handle_search_flights(
-    client: TequilaClient,
-    date_from: str,
-    date_to: str,
-    return_from: str,
-    return_to: str,
-    nights_in_dst_from: int = 21,
-    nights_in_dst_to: int = 30,
-    limit: int = 10,
+    client: SerpAPIClient,
+    arrival_id: str,
+    outbound_date: str,
+    return_date: str,
 ) -> list[dict]:
     from src import config
     try:
-        return client.search_flights(
-            fly_from=config.ORIGIN,
-            fly_to=config.DESTINATION,
-            date_from=date_from,
-            date_to=date_to,
-            return_from=return_from,
-            return_to=return_to,
-            nights_in_dst_from=nights_in_dst_from,
-            nights_in_dst_to=nights_in_dst_to,
+        return client.search_round_trip(
+            departure_id=config.ORIGIN,
+            arrival_id=arrival_id,
+            outbound_date=outbound_date,
+            return_date=return_date,
             adults=config.ADULTS,
-            curr="BRL",
-            limit=limit,
+            currency="BRL",
         )
-    except TequilaAPIError as exc:
-        logger.error("TequilaAPIError in search_flights: %s", exc)
+    except SerpAPIError as exc:
+        logger.error("SerpAPIError in search_flights: %s", exc)
         return []
     except Exception as exc:
         logger.error("Unexpected error in search_flights: %s", exc)
         return []
 
 
-def dispatch_tool(tool_name: str, tool_input: dict, tequila_client: TequilaClient) -> str:
+def dispatch_tool(tool_name: str, tool_input: dict, serpapi_client: SerpAPIClient) -> str:
     try:
         if tool_name == "search_flights":
-            result = handle_search_flights(tequila_client, **tool_input)
+            result = handle_search_flights(serpapi_client, **tool_input)
         else:
             result = {"error": f"Unknown tool: {tool_name}"}
 

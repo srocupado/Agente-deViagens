@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, timezone
 
 from src import config
-from src.tequila_client import TequilaClient
+from src.serpapi_client import SerpAPIClient
 from src.agent import run_agent
 from src.whatsapp_sender import send_whatsapp, WhatsAppSendError
 
@@ -19,10 +19,10 @@ def main() -> int:
     run_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     logger.info("Flight search agent starting — %s", run_ts)
 
-    tequila = TequilaClient(config.TEQUILA_API_KEY)
+    serpapi = SerpAPIClient(config.SERPAPI_API_KEY)
 
     try:
-        message_body = run_agent(tequila, run_ts)
+        message_body = run_agent(serpapi, run_ts)
         logger.info("Agent completed. Message length: %d chars", len(message_body))
     except Exception as exc:
         logger.error("Agent failed: %s", exc, exc_info=True)

@@ -1,7 +1,7 @@
 import logging
 import anthropic
 from src.tools import TOOLS, dispatch_tool
-from src.tequila_client import TequilaClient
+from src.serpapi_client import SerpAPIClient
 from src import config
 
 logger = logging.getLogger(__name__)
@@ -10,41 +10,51 @@ SYSTEM_PROMPT = f"""You are a flight search assistant helping two travelers find
 round-trip flights from Brasília (BSB) to Japan between September and December 2026.
 Trip duration: {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights. Travelers: {config.ADULTS} adults.
 
-Your task:
-1. Call search_flights with the full window (01/09/2026–30/11/2026 departure,
-   22/09/2026–31/12/2026 return, 21–30 nights) to get up to 10 results.
-2. Optionally make a second call narrowing to a sub-period if useful (e.g. Oct–Nov only).
-3. Compile the {config.TOP_OFFERS} overall cheapest unique options and format them
-   as a WhatsApp message (plain text, no markdown asterisks or backticks).
+## Search strategy
 
-Message format (use exactly these Unicode characters for visual structure):
+You have a limited SerpApi quota (100 calls/month). Make at most 2 calls per run.
+
+Choose departure dates from the window {config.SEARCH_WINDOW_START} to {config.SEARCH_WINDOW_END}.
+Return dates must be 21–30 days after departure, no later than 2026-12-31.
+
+Suggested approach:
+1. First call: TYO (Tokyo) with a mid-October departure (e.g. 2026-10-10, return 2026-11-04 = 25 nights).
+   October is typically cheaper for BSB→Japan routes.
+2. Optional second call: OSA (Osaka) with a late-September departure
+   (e.g. 2026-09-25, return 2026-10-20) if the first result seems expensive (> R$ 12.000/pessoa).
+
+Based on the run timestamp, vary the dates slightly to explore the full window over time.
+
+## Output format
+
+After collecting results, compile the {config.TOP_OFFERS} cheapest unique options and format a
+WhatsApp message (plain text only — no markdown asterisks, backticks, or bold syntax).
+
+Use exactly this structure:
 
 ✈️ TOP {config.TOP_OFFERS} PASSAGENS BSB → JAPÃO
-Período: set–dez 2026 | 2 adultos | 21–30 noites
+Período: set–dez 2026 | 2 adultos | {config.MIN_NIGHTS}–{config.MAX_NIGHTS} noites
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For each option (most affordable first):
+For each option (cheapest first):
 
-🏆 #{rank} — {city} ({airport_code})
-💰 R$ {total_price} (2 adultos) · R$ {per_adult}/pessoa
-📅 Ida: {departure_date}   Volta: {return_date}  ({nights} noites)
-🛫 Ida: {route_out}  ({duration_out})
-🛬 Volta: {route_back}  ({duration_back})
-✈️  {airlines}
-🔗 {deep_link}
+🏆 #N — [Cidade] ([código])
+💰 R$ [preço total] · R$ [preço/pessoa]/pessoa
+📅 Ida: [YYYY-MM-DD]   Volta: [YYYY-MM-DD]
+🛫 Ida: [rota completa ex: BSB → GRU → NRT] ([duração])
+🛬 Volta: [rota completa ex: NRT → GRU → BSB] ([duração])
+✈️  [companhias aéreas]
 
-Then:
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🤖 Agente de Viagens · [timestamp]
 
 Rules:
-- Route format: BSB → GRU → NRT (list every connection city)
-- If deep_link is empty, omit the 🔗 line
-- If the API returns no results, say so clearly in the message
-- Return ONLY the formatted message, no extra text or code blocks"""
+- Route must list every airport, e.g. BSB → GRU → NRT (not just origin and destination)
+- If no results are found, say so clearly
+- Return ONLY the formatted message — no extra explanation or code blocks"""
 
 
-def run_agent(tequila_client: TequilaClient, run_timestamp: str) -> str:
+def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     system = SYSTEM_PROMPT.replace("[timestamp]", run_timestamp)
 
@@ -52,6 +62,7 @@ def run_agent(tequila_client: TequilaClient, run_timestamp: str) -> str:
         {
             "role": "user",
             "content": (
+                f"Current time: {run_timestamp}. "
                 f"Search for the cheapest round-trip flights BSB → Japan "
                 f"(Sep–Dec 2026, {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights, "
                 f"{config.ADULTS} adults) and return the formatted WhatsApp message."
@@ -60,7 +71,7 @@ def run_agent(tequila_client: TequilaClient, run_timestamp: str) -> str:
     ]
 
     iterations = 0
-    max_iterations = 15
+    max_iterations = 10
     last_response = None
 
     while iterations < max_iterations:
@@ -88,8 +99,14 @@ def run_agent(tequila_client: TequilaClient, run_timestamp: str) -> str:
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
-                    logger.info("Tool call: %s(%s)", block.name, list(block.input.keys()))
-                    result_str = dispatch_tool(block.name, block.input, tequila_client)
+                    logger.info(
+                        "Tool call: %s(arrival_id=%s, outbound=%s, return=%s)",
+                        block.name,
+                        block.input.get("arrival_id"),
+                        block.input.get("outbound_date"),
+                        block.input.get("return_date"),
+                    )
+                    result_str = dispatch_tool(block.name, block.input, serpapi_client)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
