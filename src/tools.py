@@ -1,6 +1,7 @@
 import json
 import logging
 from src.serpapi_client import SerpAPIClient, SerpAPIError
+from src import config
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ TOOLS = [
                 },
                 "outbound_date": {
                     "type": "string",
-                    "description": "Departure date from BSB in YYYY-MM-DD format, e.g. '2026-09-20'",
+                    "description": "Departure date from GRU in YYYY-MM-DD format, e.g. '2026-09-20'",
                 },
                 "return_date": {
                     "type": "string",
@@ -52,7 +53,6 @@ def handle_search_flights(
     outbound_date: str,
     return_date: str,
 ) -> list[dict]:
-    from src import config
     try:
         return client.search_round_trip(
             departure_id=config.ORIGIN,
@@ -72,15 +72,25 @@ def handle_search_flights(
 
 def dispatch_tool(tool_name: str, tool_input: dict, serpapi_client: SerpAPIClient) -> str:
     try:
-        if tool_name == "search_flights":
-            result = handle_search_flights(serpapi_client, **tool_input)
-        else:
-            result = {"error": f"Unknown tool: {tool_name}"}
+        if tool_name != "search_flights":
+            return f"Unknown tool: {tool_name}"
 
-        serialized = json.dumps(result, ensure_ascii=False)
-        if len(serialized) > MAX_TOOL_RESULT_CHARS:
-            serialized = serialized[:MAX_TOOL_RESULT_CHARS] + "... [truncated]"
-        return serialized
+        offers = handle_search_flights(serpapi_client, **tool_input)
+
+        if not offers:
+            return "No flights found for this search."
+
+        lines = [f"Found {len(offers)} flights. Pre-formatted cards below — copy each VERBATIM:\n"]
+        for i, offer in enumerate(offers[:config.TOP_OFFERS], 1):
+            lines.append(f"<<< CARD {i} >>>")
+            lines.append(offer["card"])
+            lines.append(f"<<< END CARD {i} >>>")
+            lines.append("")
+
+        result = "\n".join(lines)
+        if len(result) > MAX_TOOL_RESULT_CHARS:
+            result = result[:MAX_TOOL_RESULT_CHARS] + "\n... [truncated]"
+        return result
     except Exception as exc:
         logger.error("dispatch_tool error for %s: %s", tool_name, exc)
-        return json.dumps({"error": str(exc)})
+        return f"Error: {exc}"
