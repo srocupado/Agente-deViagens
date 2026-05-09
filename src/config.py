@@ -20,7 +20,6 @@ SEARCH_WINDOW_END = "2026-11-30"
 TOP_OFFERS = 5
 
 # Secrets from environment
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 SERPAPI_API_KEY = os.environ["SERPAPI_API_KEY"]
 GMAIL_USER = os.environ["GMAIL_USER"]
 GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
