@@ -30,32 +30,27 @@ Based on the run timestamp, vary the dates slightly to explore the full window o
 
 ## Output format
 
-After collecting results, compile the {config.TOP_OFFERS} cheapest unique options and format a
-plain-text email body (no markdown asterisks, backticks, or bold syntax).
+Each flight result has a pre-formatted "card" field. Your job:
+1. Pick the {config.TOP_OFFERS} cheapest results (sorted by price_brl ascending).
+2. Build the final email by copying each card VERBATIM between the header and footer below.
+   Do NOT rewrite, summarize, or reformat the card content in any way.
 
-Use exactly this structure:
-
+Header (write exactly):
 ✈️ TOP {config.TOP_OFFERS} PASSAGENS GRU → JAPÃO
 Período: set–dez 2026 | 2 adultos | {config.MIN_NIGHTS}–{config.MAX_NIGHTS} noites
-(adicione uma nota: passagens saindo de GRU; quem parte de BSB precisa incluir BSB→GRU)
+Atenção: preços saindo de GRU (Guarulhos). Quem parte de BSB deve incluir BSB→GRU.
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For each option (cheapest first):
+For each of the top {config.TOP_OFFERS} flights, write:
+🏆 #N
+[paste the card field here EXACTLY as returned by the tool, character by character]
 
-🏆 #N — [Cidade] ([código])
-💰 R$ [preço total] · R$ [preço/pessoa]/pessoa
-📅 Ida: [YYYY-MM-DD]   Volta: [YYYY-MM-DD]
-🛫 Ida: [use o campo outbound.route exatamente como retornado, ex: GRU (São Paulo) → DFW (Dallas) → NRT (Tóquio)] ([duração])
-🛬 Volta: [use o campo return_leg.route exatamente como retornado, ex: NRT (Tóquio) → DFW (Dallas) → GRU (São Paulo)] ([duração])
-✈️  [companhias aéreas]
-
+Footer (write exactly):
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🤖 Agente de Viagens · [timestamp]
 
-Rules:
-- Route must list every airport in the itinerary
-- If no results are found, say so clearly
-- Return ONLY the formatted message — no extra explanation or code blocks"""
+If no results: say so clearly and suggest trying again later.
+Return ONLY the final email — no explanation or code blocks."""
 
 
 def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:

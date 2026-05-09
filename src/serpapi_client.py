@@ -35,7 +35,6 @@ JAPAN_AIRPORTS = {
 
 
 def _city_name(airport_id: str, airport_name: str) -> str:
-    """Return a short Portuguese city name for an airport."""
     if airport_id in _CITY_OVERRIDES:
         return _CITY_OVERRIDES[airport_id]
     if "/" in airport_name:
@@ -70,9 +69,7 @@ def _summarize_legs(legs: list[dict]) -> dict:
     ))
     return {
         "route": route,
-        "connections": codes[1:-1],
         "airlines": airlines,
-        "flight_numbers": [leg.get("flight_number", "") for leg in legs],
         "departure": legs[0]["departure_airport"].get("time", ""),
         "arrival": legs[-1]["arrival_airport"].get("time", ""),
         "duration_str": f"{total_min // 60}h{total_min % 60:02d}m",
@@ -97,19 +94,19 @@ class SerpAPIClient:
                 if resp.status_code == 429:
                     wait = 2 ** attempt
                     logger.warning("Rate limited, waiting %ds", wait)
-                    time.sleep(wait)
+                    import time as _t; _t.sleep(wait)
                     continue
                 if resp.status_code >= 500:
                     wait = 2 ** attempt
                     logger.warning("Server error %d, retrying in %ds", resp.status_code, wait)
-                    time.sleep(wait)
+                    import time as _t; _t.sleep(wait)
                     continue
                 return resp
             except requests.RequestException as exc:
                 if attempt == 2:
                     raise
                 logger.warning("Request error, retrying: %s", exc)
-                time.sleep(2 ** attempt)
+                import time as _t; _t.sleep(2 ** attempt)
         return resp  # type: ignore[return-value]
 
     def search_round_trip(
@@ -121,7 +118,6 @@ class SerpAPIClient:
         adults: int = 2,
         currency: str = "BRL",
     ) -> list[dict]:
-        """Search Google Flights round-trip via SerpApi. Returns parsed flight list."""
         params = {
             "engine": "google_flights",
             "departure_id": departure_id,
@@ -130,7 +126,7 @@ class SerpAPIClient:
             "return_date": return_date,
             "adults": adults,
             "currency": currency,
-            "type": "1",  # round trip
+            "type": "1",
             "hl": "en",
             "gl": "us",
             "api_key": self._api_key,
@@ -159,6 +155,8 @@ class SerpAPIClient:
         return_date: str,
         arrival_id: str,
     ) -> list[dict]:
+        from datetime import datetime
+
         offers = []
         all_flights = data.get("best_flights", []) + data.get("other_flights", [])
 
@@ -167,10 +165,6 @@ class SerpAPIClient:
             if not flights:
                 continue
 
-            # Split outbound / return by detecting when we reach a Japanese airport.
-            # Filtering by departure date is unreliable because connecting legs
-            # depart on a different calendar day (e.g. GRU→LAX departs Oct-12,
-            # LAX→NRT departs Oct-13 — only LAX shows up in an Oct-12 filter).
             outbound_legs: list[dict] = []
             return_legs: list[dict] = []
             reached_japan = False
@@ -191,16 +185,34 @@ class SerpAPIClient:
                 dest_airport,
                 outbound_legs[-1]["arrival_airport"].get("name", "") if outbound_legs else "",
             )
+            out = _summarize_legs(outbound_legs)
+            ret = _summarize_legs(return_legs)
+            price = item.get("price", 0)
+
+            try:
+                nights = (
+                    datetime.strptime(return_date, "%Y-%m-%d") -
+                    datetime.strptime(outbound_date, "%Y-%m-%d")
+                ).days
+                nights_str = f"{nights} noites"
+            except Exception:
+                nights_str = ""
 
             offers.append({
-                "price_brl": item.get("price", 0),
+                "price_brl": price,
                 "outbound_date": outbound_date,
                 "return_date": return_date,
                 "destination_airport": dest_airport,
                 "destination_name": dest_city,
-                "outbound": _summarize_legs(outbound_legs),
-                "return_leg": _summarize_legs(return_legs),
-                "carbon_emissions": item.get("carbon_emissions", {}).get("this_flight"),
+                # Pre-formatted card — Claude must copy this verbatim
+                "card": (
+                    f"DESTINO: {dest_city} ({dest_airport})\n"
+                    f"PRECO:   R$ {price:,.0f} total  ·  R$ {price/2:,.0f}/pessoa\n"
+                    f"DATAS:   Ida {outbound_date}  Volta {return_date}  ({nights_str})\n"
+                    f"IDA:     {out.get('route', '')}  [{out.get('duration_str', '')}]\n"
+                    f"VOLTA:   {ret.get('route', '')}  [{ret.get('duration_str', '')}]\n"
+                    f"CIA:     {', '.join(out.get('airlines', []))}"
+                ),
             })
 
         offers.sort(key=lambda x: x.get("price_brl") or 0)
