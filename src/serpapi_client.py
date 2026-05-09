@@ -58,8 +58,8 @@ class SerpAPIClient:
             "adults": adults,
             "currency": currency,
             "type": "1",  # round trip
-            "hl": "pt",
-            "gl": "br",
+            "hl": "en",
+            "gl": "us",
             "api_key": self._api_key,
         }
 

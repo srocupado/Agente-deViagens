@@ -18,10 +18,13 @@ Choose departure dates from the window {config.SEARCH_WINDOW_START} to {config.S
 Return dates must be 21–30 days after departure, no later than 2026-12-31.
 
 Suggested approach:
-1. First call: TYO (Tokyo) with a mid-October departure (e.g. 2026-10-10, return 2026-11-04 = 25 nights).
+1. First call: NRT (Tokyo Narita) with a mid-October departure (e.g. 2026-10-10, return 2026-11-04 = 25 nights).
    October is typically cheaper for BSB→Japan routes.
-2. Optional second call: OSA (Osaka) with a late-September departure
+2. Optional second call: KIX (Osaka Kansai) with a late-September departure
    (e.g. 2026-09-25, return 2026-10-20) if the first result seems expensive (> R$ 12.000/pessoa).
+
+IMPORTANT: Always use specific airport codes — NRT, HND, KIX, NGO, FUK.
+Do NOT use city codes like TYO or OSA — they return no results in this API.
 
 Based on the run timestamp, vary the dates slightly to explore the full window over time.
 

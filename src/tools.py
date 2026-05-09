@@ -22,9 +22,10 @@ TOOLS = [
                 "arrival_id": {
                     "type": "string",
                     "description": (
-                        "IATA code for Japan destination. Use city codes for multi-airport coverage: "
-                        "'TYO' (Tokyo — covers NRT and HND), 'OSA' (Osaka — covers KIX), "
-                        "'NGO' (Nagoya), 'FUK' (Fukuoka). Default: TYO"
+                        "Specific airport IATA code for Japan destination. "
+                        "Use 'NRT' (Tokyo Narita), 'HND' (Tokyo Haneda), 'KIX' (Osaka Kansai), "
+                        "'NGO' (Nagoya), 'FUK' (Fukuoka). "
+                        "Do NOT use city codes like TYO or OSA — they return no results."
                     ),
                 },
                 "outbound_date": {

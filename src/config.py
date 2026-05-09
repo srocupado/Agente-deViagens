@@ -9,8 +9,8 @@ ADULTS = 2
 MIN_NIGHTS = 21
 MAX_NIGHTS = 30
 
-# Japan airports to consider (TYO = Tokyo covers NRT+HND; OSA = Osaka covers KIX+ITM)
-JAPAN_AIRPORTS = ["TYO", "OSA", "NGO", "FUK"]
+# Japan airports — use specific airport codes, not city codes (TYO/OSA don't work in SerpApi)
+JAPAN_AIRPORTS = ["NRT", "HND", "KIX", "NGO", "FUK"]
 
 # Search window: Sep–Nov departure (latest allows 21-day return by Dec 31)
 SEARCH_WINDOW_START = "2026-09-01"
