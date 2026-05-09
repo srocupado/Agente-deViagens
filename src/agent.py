@@ -7,7 +7,7 @@ from src import config
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = f"""You are a flight search assistant helping two travelers find the cheapest
-round-trip flights from Brasília (BSB) to Japan between September and December 2026.
+round-trip flights from São Paulo (GRU) to Japan between September and December 2026.
 Trip duration: {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights. Travelers: {config.ADULTS} adults.
 
 ## Search strategy
@@ -19,7 +19,7 @@ Return dates must be 21–30 days after departure, no later than 2026-12-31.
 
 Suggested approach:
 1. First call: NRT (Tokyo Narita) with a mid-October departure (e.g. 2026-10-10, return 2026-11-04 = 25 nights).
-   October is typically cheaper for BSB→Japan routes.
+   October is typically cheaper for GRU→Japan routes.
 2. Optional second call: KIX (Osaka Kansai) with a late-September departure
    (e.g. 2026-09-25, return 2026-10-20) if the first result seems expensive (> R$ 12.000/pessoa).
 
@@ -31,12 +31,13 @@ Based on the run timestamp, vary the dates slightly to explore the full window o
 ## Output format
 
 After collecting results, compile the {config.TOP_OFFERS} cheapest unique options and format a
-WhatsApp message (plain text only — no markdown asterisks, backticks, or bold syntax).
+plain-text email body (no markdown asterisks, backticks, or bold syntax).
 
 Use exactly this structure:
 
-✈️ TOP {config.TOP_OFFERS} PASSAGENS BSB → JAPÃO
+✈️ TOP {config.TOP_OFFERS} PASSAGENS GRU → JAPÃO
 Período: set–dez 2026 | 2 adultos | {config.MIN_NIGHTS}–{config.MAX_NIGHTS} noites
+(adicione uma nota: passagens saindo de GRU; quem parte de BSB precisa incluir BSB→GRU)
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
 For each option (cheapest first):
@@ -44,15 +45,15 @@ For each option (cheapest first):
 🏆 #N — [Cidade] ([código])
 💰 R$ [preço total] · R$ [preço/pessoa]/pessoa
 📅 Ida: [YYYY-MM-DD]   Volta: [YYYY-MM-DD]
-🛫 Ida: [rota completa ex: BSB → GRU → NRT] ([duração])
-🛬 Volta: [rota completa ex: NRT → GRU → BSB] ([duração])
+🛫 Ida: [rota completa ex: GRU → NRT] ([duração])
+🛬 Volta: [rota completa ex: NRT → GRU] ([duração])
 ✈️  [companhias aéreas]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🤖 Agente de Viagens · [timestamp]
 
 Rules:
-- Route must list every airport, e.g. BSB → GRU → NRT (not just origin and destination)
+- Route must list every airport in the itinerary
 - If no results are found, say so clearly
 - Return ONLY the formatted message — no extra explanation or code blocks"""
 
@@ -66,9 +67,9 @@ def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
             "role": "user",
             "content": (
                 f"Current time: {run_timestamp}. "
-                f"Search for the cheapest round-trip flights BSB → Japan "
+                f"Search for the cheapest round-trip flights GRU → Japan "
                 f"(Sep–Dec 2026, {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights, "
-                f"{config.ADULTS} adults) and return the formatted WhatsApp message."
+                f"{config.ADULTS} adults) and return the formatted email body."
             ),
         }
     ]

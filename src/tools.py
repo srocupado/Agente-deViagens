@@ -10,7 +10,7 @@ TOOLS = [
     {
         "name": "search_flights",
         "description": (
-            "Search Google Flights (via SerpApi) for round-trip flights from Brasília (BSB) "
+            "Search Google Flights (via SerpApi) for round-trip flights from São Paulo Guarulhos (GRU) "
             "to a Japanese airport for specific departure and return dates. "
             "Returns flights sorted by total price in BRL for 2 adults. "
             "IMPORTANT: Each call consumes 1 SerpApi credit (100/month free). "

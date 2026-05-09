@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Trip parameters
-ORIGIN = "BSB"
+ORIGIN = "GRU"  # Guarulhos — hub de todas as rotas Brasil→Japão
 ADULTS = 2
 MIN_NIGHTS = 21
 MAX_NIGHTS = 30
