@@ -10,6 +10,13 @@ from src.trip_config import TripConfig
 logger = logging.getLogger(__name__)
 
 
+def _trim_preamble(body: str) -> str:
+    idx = body.find("✈️")
+    if idx > 0:
+        return body[idx:].rstrip()
+    return body.strip()
+
+
 def build_system_prompt(trip_cfg: TripConfig) -> str:
     origin_codes = ", ".join(trip_cfg.origin_airports)
     dest_codes = ", ".join(trip_cfg.destination_airports)
@@ -129,7 +136,7 @@ def run_agent(
             for block in response.content:
                 if hasattr(block, "text"):
                     logger.info("SerpApi calls used this run: %d/%d", counter.count, counter.limit)
-                    return block.text
+                    return _trim_preamble(block.text)
             return "Erro: agente não retornou texto final."
 
         if response.stop_reason == "tool_use":
@@ -162,5 +169,5 @@ def run_agent(
     if last_response:
         for block in last_response.content:
             if hasattr(block, "text") and block.text:
-                return block.text
+                return _trim_preamble(block.text)
     return "Erro: agente atingiu o limite de iterações sem produzir resultado."
