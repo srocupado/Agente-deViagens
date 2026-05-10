@@ -157,7 +157,7 @@ class SerpAPIClient:
         travel_class_label: str = "Econômica",
         destination_airports: set[str] | None = None,
         ranking: str = "price_then_stops",
-        top_offers: int = 2,
+        returns_per_search: int = 2,
         on_call=None,
     ) -> list[dict]:
         base_params = {
@@ -193,7 +193,7 @@ class SerpAPIClient:
             destination_airports=destination_airports or _DEFAULT_DESTINATION_AIRPORTS,
         )
         self._sort_offers(offers, ranking)
-        top = offers[:top_offers]
+        top = offers[:returns_per_search]
 
         for offer in top:
             token = offer.pop("_departure_token", None)

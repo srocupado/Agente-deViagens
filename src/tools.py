@@ -23,12 +23,13 @@ def build_tools(trip_cfg: TripConfig) -> list[dict]:
                 f"Search Google Flights (via SerpApi) for round-trip flights from "
                 f"{trip_cfg.origin_label} ({origin_codes}) to {trip_cfg.destination_label} "
                 f"({dest_codes}) in {trip_cfg.travel_class_label} class for "
-                f"{trip_cfg.adults} adult(s). Returns the top {trip_cfg.top_offers} flights "
-                f"with full outbound AND return itineraries, sorted by price (BRL). "
-                f"Each call consumes up to {1 + trip_cfg.top_offers} SerpApi credits "
-                f"(1 outbound search + {trip_cfg.top_offers} return lookups). "
-                f"Run budget: {trip_cfg.max_serpapi_calls} credits — call this tool ONCE "
-                f"per run unless results are clearly bad."
+                f"{trip_cfg.adults} adult(s). Returns the top {trip_cfg.returns_per_search} "
+                f"flights with full outbound AND return itineraries, sorted by price (BRL). "
+                f"Each call consumes up to {1 + trip_cfg.returns_per_search} SerpApi credits "
+                f"(1 outbound search + {trip_cfg.returns_per_search} return lookups). "
+                f"Run budget: {trip_cfg.max_serpapi_calls} credits. Vary departure_id and "
+                f"outbound_date across calls to cover the full window and multiple destination "
+                f"airports."
             ),
             "input_schema": {
                 "type": "object",
@@ -100,7 +101,7 @@ def _handle_search_flights(
             travel_class_label=trip_cfg.travel_class_label,
             destination_airports=set(trip_cfg.destination_airports),
             ranking=trip_cfg.ranking,
-            top_offers=trip_cfg.top_offers,
+            returns_per_search=trip_cfg.returns_per_search,
             on_call=counter.increment,
         )
     except SerpAPIError as exc:

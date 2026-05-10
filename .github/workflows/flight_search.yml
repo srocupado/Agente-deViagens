@@ -2,8 +2,8 @@ name: Flight Search
 
 on:
   schedule:
-    # 09:00 UTC = 06:00 BRT (UTC-3) — 1x por dia
-    - cron: "0 9 * * *"
+    # 09:00 UTC = 06:00 BRT (UTC-3) — 2x por semana (segunda e quinta)
+    - cron: "0 9 * * 1,4"
   workflow_dispatch:
 
 concurrency:

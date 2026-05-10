@@ -47,6 +47,7 @@ class TripConfig:
     travel_class_int: int
     travel_class_label: str
     top_offers: int
+    returns_per_search: int
     ranking: str
     max_serpapi_calls: int
 
@@ -127,6 +128,12 @@ def load_trip_config(path: str | Path = "trip_config.yml") -> TripConfig:
     if not isinstance(top_offers, int) or top_offers < 1:
         raise TripConfigError(f"Campo 'search.top_offers' deve ser inteiro >= 1. Recebido: {top_offers!r}.")
 
+    returns_per_search = search.get("returns_per_search", 2)
+    if not isinstance(returns_per_search, int) or returns_per_search < 1:
+        raise TripConfigError(
+            f"Campo 'search.returns_per_search' deve ser inteiro >= 1. Recebido: {returns_per_search!r}."
+        )
+
     ranking = search.get("ranking", "price_then_stops")
     if ranking not in VALID_RANKINGS:
         raise TripConfigError(
@@ -150,6 +157,7 @@ def load_trip_config(path: str | Path = "trip_config.yml") -> TripConfig:
         travel_class_int=_CLASS_TO_SERPAPI[travel_class],
         travel_class_label=_CLASS_LABEL_PT[travel_class],
         top_offers=top_offers,
+        returns_per_search=returns_per_search,
         ranking=ranking,
         max_serpapi_calls=max_calls,
     )

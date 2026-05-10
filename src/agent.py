@@ -15,24 +15,43 @@ def build_system_prompt(trip_cfg: TripConfig) -> str:
     dest_codes = ", ".join(trip_cfg.destination_airports)
     window_label = f"{trip_cfg.window_start.isoformat()} a {trip_cfg.window_end.isoformat()}"
 
+    cost_per_search = 1 + trip_cfg.returns_per_search
+    max_searches = trip_cfg.max_serpapi_calls // cost_per_search
+
     return f"""You are a flight search assistant helping {trip_cfg.adults} traveler(s) find round-trip
 flights from {trip_cfg.origin_label} ({origin_codes}) to {trip_cfg.destination_label} ({dest_codes}).
 Trip duration: exactly {trip_cfg.nights} nights. Travel class: {trip_cfg.travel_class_label}.
 
 ## Search strategy
 
-You have a tight SerpApi credit budget: {trip_cfg.max_serpapi_calls} credits per run.
-Each `search_flights` call consumes up to {1 + trip_cfg.top_offers} credits (1 outbound search +
-{trip_cfg.top_offers} return lookups). In practice, call `search_flights` ONCE per run.
+Budget: {trip_cfg.max_serpapi_calls} SerpApi credits per run. Each `search_flights` call costs
+{cost_per_search} credits (1 outbound search + {trip_cfg.returns_per_search} return lookups),
+so you can make about {max_searches} searches per run.
 
-Choose departure dates from the window {trip_cfg.window_start.isoformat()} to {trip_cfg.window_end.isoformat()}.
+Departure window: {trip_cfg.window_start.isoformat()} to {trip_cfg.window_end.isoformat()}.
 Return date must be exactly {trip_cfg.nights} days after departure.
 
-Pick a single most promising destination airport. Vary the dates across runs based on the run
-timestamp so the full window is explored over time.
+YOUR JOB IS TO MAXIMIZE COVERAGE. Plan your {max_searches} searches so they together cover:
+
+1. The FULL date window — split it into roughly {max_searches} sub-ranges and pick one
+   outbound_date per sub-range (e.g., early/mid/late if 3 searches, one per month if monthly).
+   Do NOT cluster all searches in the same week or month.
+2. Multiple destination airports — pick at least 2 different airports from {dest_codes}.
+   Rotate them across the searches so we compare options.
+3. Some date jitter across runs based on the run timestamp, so different runs explore slightly
+   different dates and surface new deals.
+
+Example for 3 searches in a Sep–Nov window with airports NRT/HND/KIX:
+  Search 1: NRT, departure ~mid-September
+  Search 2: HND, departure ~mid-October
+  Search 3: KIX, departure ~mid-November
+(Adjust the exact dates based on the run timestamp to vary across runs.)
 
 IMPORTANT: Always use specific airport IATA codes ({dest_codes}). Do NOT use city codes
 like TYO or OSA — they return no results in this API.
+
+If a search returns no results, try a different date or airport on the next call. Don't
+waste credits repeating identical searches.
 
 ## Output format
 
