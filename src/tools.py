@@ -23,9 +23,12 @@ def build_tools(trip_cfg: TripConfig) -> list[dict]:
                 f"Search Google Flights (via SerpApi) for round-trip flights from "
                 f"{trip_cfg.origin_label} ({origin_codes}) to {trip_cfg.destination_label} "
                 f"({dest_codes}) in {trip_cfg.travel_class_label} class for "
-                f"{trip_cfg.adults} adult(s). Returns flights sorted by price (BRL). "
-                f"Each call consumes 1 SerpApi credit. Make at most "
-                f"{trip_cfg.max_serpapi_calls} calls per run."
+                f"{trip_cfg.adults} adult(s). Returns the top {trip_cfg.top_offers} flights "
+                f"with full outbound AND return itineraries, sorted by price (BRL). "
+                f"Each call consumes up to {1 + trip_cfg.top_offers} SerpApi credits "
+                f"(1 outbound search + {trip_cfg.top_offers} return lookups). "
+                f"Run budget: {trip_cfg.max_serpapi_calls} credits — call this tool ONCE "
+                f"per run unless results are clearly bad."
             ),
             "input_schema": {
                 "type": "object",
@@ -79,6 +82,7 @@ class CallCounter:
 def _handle_search_flights(
     client: SerpAPIClient,
     trip_cfg: TripConfig,
+    counter: "CallCounter",
     departure_id: str,
     arrival_id: str,
     outbound_date: str,
@@ -96,6 +100,8 @@ def _handle_search_flights(
             travel_class_label=trip_cfg.travel_class_label,
             destination_airports=set(trip_cfg.destination_airports),
             ranking=trip_cfg.ranking,
+            top_offers=trip_cfg.top_offers,
+            on_call=counter.increment,
         )
     except SerpAPIError as exc:
         logger.error("SerpAPIError in search_flights: %s", exc)
@@ -114,14 +120,14 @@ def dispatch_tool(
 ) -> str:
     try:
         if tool_name == "search_flights":
-            if not counter.increment():
+            if counter.count >= counter.limit:
                 return json.dumps({
                     "error": (
-                        f"SerpApi call limit reached ({counter.limit}). "
+                        f"SerpApi call budget exhausted ({counter.count}/{counter.limit}). "
                         f"Compile the email with results gathered so far."
                     )
                 })
-            result = _handle_search_flights(serpapi_client, trip_cfg, **tool_input)
+            result = _handle_search_flights(serpapi_client, trip_cfg, counter, **tool_input)
         else:
             result = {"error": f"Unknown tool: {tool_name}"}
 

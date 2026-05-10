@@ -28,13 +28,16 @@ search:
   # business/first/premium_economy só são aceitos para destinos fora do Brasil.
   class: economy
 
-  # Quantas ofertas mostrar no email.
-  top_offers: 5
+  # Quantas ofertas mostrar no email (com IDA E VOLTA detalhadas).
+  # Cada oferta consome 1 crédito SerpApi extra (lookup da volta).
+  top_offers: 2
 
   # Critério de ranqueamento:
   #   price_then_stops -> preço asc, depois nº de escalas asc
   #   price_only       -> apenas preço
   ranking: "price_then_stops"
 
-  # Limite duro de chamadas SerpApi por execução (proteção de quota: 100/mês grátis).
-  max_serpapi_calls: 2
+  # Orçamento de chamadas SerpApi por execução (quota free: 100/mês).
+  # Custo real = 1 (busca de ida) + top_offers (lookup das voltas).
+  # Default: 1 + 2 = 3 créditos × 30 dias = 90/mês. Cabe no free.
+  max_serpapi_calls: 3

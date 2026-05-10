@@ -21,13 +21,15 @@ Trip duration: exactly {trip_cfg.nights} nights. Travel class: {trip_cfg.travel_
 
 ## Search strategy
 
-You have a limited SerpApi quota. Make at most {trip_cfg.max_serpapi_calls} calls per run.
+You have a tight SerpApi credit budget: {trip_cfg.max_serpapi_calls} credits per run.
+Each `search_flights` call consumes up to {1 + trip_cfg.top_offers} credits (1 outbound search +
+{trip_cfg.top_offers} return lookups). In practice, call `search_flights` ONCE per run.
 
 Choose departure dates from the window {trip_cfg.window_start.isoformat()} to {trip_cfg.window_end.isoformat()}.
 Return date must be exactly {trip_cfg.nights} days after departure.
 
-Pick the most promising destination airport(s) to compare. Vary the dates slightly across runs
-based on the run timestamp so the full window is explored over time.
+Pick a single most promising destination airport. Vary the dates across runs based on the run
+timestamp so the full window is explored over time.
 
 IMPORTANT: Always use specific airport IATA codes ({dest_codes}). Do NOT use city codes
 like TYO or OSA — they return no results in this API.

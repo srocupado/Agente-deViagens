@@ -74,10 +74,49 @@ def _summarize_legs(legs: list[dict]) -> dict:
     }
 
 
+def _build_card(
+    *,
+    dest_city: str,
+    dest_airport: str,
+    travel_class_label: str,
+    price: float,
+    per_person: float,
+    outbound_date: str,
+    return_date: str,
+    nights_str: str,
+    out: dict,
+    ret: dict,
+) -> str:
+    if ret:
+        volta_line = f"VOLTA:   {ret.get('route', '')}  [{ret.get('duration_str', '')}]"
+    else:
+        volta_line = "VOLTA:   (volta não consultada — verifique no Google Flights)"
+
+    airlines_combined = list(dict.fromkeys(
+        (out.get("airlines") or []) + (ret.get("airlines") or [])
+    ))
+    cia_str = ", ".join(airlines_combined)
+
+    return (
+        f"DESTINO: {dest_city} ({dest_airport})\n"
+        f"CLASSE:  {travel_class_label}\n"
+        f"PRECO:   R$ {price:,.0f} total  ·  R$ {per_person:,.0f}/pessoa\n"
+        f"DATAS:   Ida {outbound_date}  Volta {return_date}  ({nights_str})\n"
+        f"IDA:     {out.get('route', '')}  [{out.get('duration_str', '')}]\n"
+        f"{volta_line}\n"
+        f"CIA:     {cia_str}"
+    )
+
+
 class SerpAPIError(Exception):
     def __init__(self, status_code: int, message: str):
         super().__init__(message)
         self.status_code = status_code
+
+
+class SerpAPIBudgetExhausted(SerpAPIError):
+    def __init__(self):
+        super().__init__(0, "SerpApi call budget exhausted for this run")
 
 
 class SerpAPIClient:
@@ -91,19 +130,19 @@ class SerpAPIClient:
                 if resp.status_code == 429:
                     wait = 2 ** attempt
                     logger.warning("Rate limited, waiting %ds", wait)
-                    import time as _t; _t.sleep(wait)
+                    time.sleep(wait)
                     continue
                 if resp.status_code >= 500:
                     wait = 2 ** attempt
                     logger.warning("Server error %d, retrying in %ds", resp.status_code, wait)
-                    import time as _t; _t.sleep(wait)
+                    time.sleep(wait)
                     continue
                 return resp
             except requests.RequestException as exc:
                 if attempt == 2:
                     raise
                 logger.warning("Request error, retrying: %s", exc)
-                import time as _t; _t.sleep(2 ** attempt)
+                time.sleep(2 ** attempt)
         return resp  # type: ignore[return-value]
 
     def search_round_trip(
@@ -118,8 +157,10 @@ class SerpAPIClient:
         travel_class_label: str = "Econômica",
         destination_airports: set[str] | None = None,
         ranking: str = "price_then_stops",
+        top_offers: int = 2,
+        on_call=None,
     ) -> list[dict]:
-        params = {
+        base_params = {
             "engine": "google_flights",
             "departure_id": departure_id,
             "arrival_id": arrival_id,
@@ -134,33 +175,118 @@ class SerpAPIClient:
             "api_key": self._api_key,
         }
 
-        resp = self._request_with_retry(params)
+        if on_call is not None and not on_call():
+            raise SerpAPIBudgetExhausted()
 
+        resp = self._request_with_retry(base_params)
+        data = self._handle_response(resp, departure_id, arrival_id, outbound_date)
+        if data is None:
+            return []
+
+        offers = self._parse_outbound_offers(
+            data,
+            outbound_date=outbound_date,
+            return_date=return_date,
+            arrival_id=arrival_id,
+            adults=adults,
+            travel_class_label=travel_class_label,
+            destination_airports=destination_airports or _DEFAULT_DESTINATION_AIRPORTS,
+        )
+        self._sort_offers(offers, ranking)
+        top = offers[:top_offers]
+
+        for offer in top:
+            token = offer.pop("_departure_token", None)
+            if not token:
+                logger.info("No departure_token for offer R$ %s — skipping return lookup", offer.get("price_brl"))
+                offer["_card_meta"]["ret"] = {}
+                continue
+            if on_call is not None and not on_call():
+                logger.warning(
+                    "Budget exhausted before fetching return for offer R$ %s",
+                    offer.get("price_brl"),
+                )
+                offer["_card_meta"]["ret"] = {}
+                continue
+            ret_summary = self._fetch_return_summary(base_params, token)
+            offer["_card_meta"]["ret"] = ret_summary
+            offer["total_stops"] = (
+                offer["_card_meta"]["out"].get("num_stops", 0)
+                + ret_summary.get("num_stops", 0)
+            )
+
+        for offer in top:
+            meta = offer.pop("_card_meta")
+            offer["card"] = _build_card(
+                dest_city=meta["dest_city"],
+                dest_airport=meta["dest_airport"],
+                travel_class_label=travel_class_label,
+                price=meta["price"],
+                per_person=meta["per_person"],
+                outbound_date=outbound_date,
+                return_date=return_date,
+                nights_str=meta["nights_str"],
+                out=meta["out"],
+                ret=meta["ret"],
+            )
+
+        return top
+
+    def _handle_response(
+        self,
+        resp: requests.Response,
+        departure_id: str,
+        arrival_id: str,
+        outbound_date: str,
+    ) -> dict | None:
         if resp.status_code != 200:
             body = resp.json() if resp.content else {}
             error_msg = body.get("error", resp.text[:300])
             if resp.status_code == 400:
                 logger.info("No results for %s→%s on %s", departure_id, arrival_id, outbound_date)
-                return []
+                return None
             raise SerpAPIError(resp.status_code, error_msg)
 
         data = resp.json()
         if "error" in data:
             raise SerpAPIError(0, data["error"])
+        return data
 
-        return self._parse_results(
-            data,
-            outbound_date,
-            return_date,
-            arrival_id,
-            adults=adults,
-            travel_class_label=travel_class_label,
-            destination_airports=destination_airports or _DEFAULT_DESTINATION_AIRPORTS,
-            ranking=ranking,
-        )
+    def _fetch_return_summary(self, base_params: dict, departure_token: str) -> dict:
+        params = dict(base_params)
+        params["departure_token"] = departure_token
+        try:
+            resp = self._request_with_retry(params)
+            data = self._handle_response(
+                resp,
+                base_params["departure_id"],
+                base_params["arrival_id"],
+                base_params["outbound_date"],
+            )
+        except SerpAPIError as exc:
+            logger.warning("Failed to fetch return legs: %s", exc)
+            return {}
+        if data is None:
+            return {}
+
+        candidates = data.get("best_flights", []) + data.get("other_flights", [])
+        if not candidates:
+            return {}
+        first = candidates[0]
+        legs = first.get("flights") or []
+        if not legs:
+            return {}
+        return _summarize_legs(legs)
 
     @staticmethod
-    def _parse_results(
+    def _sort_offers(offers: list[dict], ranking: str) -> None:
+        if ranking == "price_only":
+            offers.sort(key=lambda x: x.get("price_brl") or float("inf"))
+        else:
+            offers.sort(key=lambda x: (x.get("price_brl") or float("inf"), x.get("total_stops", 0)))
+
+    @staticmethod
+    def _parse_outbound_offers(
         data: dict,
         outbound_date: str,
         return_date: str,
@@ -168,7 +294,6 @@ class SerpAPIClient:
         adults: int,
         travel_class_label: str,
         destination_airports: set[str],
-        ranking: str,
     ) -> list[dict]:
         from datetime import datetime
 
@@ -176,34 +301,19 @@ class SerpAPIClient:
         all_flights = data.get("best_flights", []) + data.get("other_flights", [])
 
         for item in all_flights:
-            flights = item.get("flights", [])
-            if not flights:
+            legs = item.get("flights", [])
+            if not legs:
                 continue
 
-            outbound_legs: list[dict] = []
-            return_legs: list[dict] = []
-            reached_destination = False
+            dest_airport = legs[-1]["arrival_airport"]["id"]
+            if dest_airport != arrival_id and destination_airports and dest_airport not in destination_airports:
+                # Outbound terminus is not the requested destination — skip.
+                continue
 
-            for leg in flights:
-                arr_id = leg.get("arrival_airport", {}).get("id", "")
-                if not reached_destination:
-                    outbound_legs.append(leg)
-                    if arr_id == arrival_id or arr_id in destination_airports:
-                        reached_destination = True
-                else:
-                    return_legs.append(leg)
-
-            dest_airport = (
-                outbound_legs[-1]["arrival_airport"]["id"] if outbound_legs else arrival_id
-            )
-            dest_city = _city_name(
-                dest_airport,
-                outbound_legs[-1]["arrival_airport"].get("name", "") if outbound_legs else "",
-            )
-            out = _summarize_legs(outbound_legs)
-            ret = _summarize_legs(return_legs)
+            dest_city = _city_name(dest_airport, legs[-1]["arrival_airport"].get("name", ""))
+            out = _summarize_legs(legs)
             price = item.get("price", 0)
-            total_stops = out.get("num_stops", 0) + ret.get("num_stops", 0)
+            per_person = price / adults if adults > 0 else price
 
             try:
                 nights = (
@@ -214,29 +324,23 @@ class SerpAPIClient:
             except Exception:
                 nights_str = ""
 
-            per_person = price / adults if adults > 0 else price
-
             offers.append({
                 "price_brl": price,
-                "total_stops": total_stops,
+                "total_stops": out.get("num_stops", 0),
                 "outbound_date": outbound_date,
                 "return_date": return_date,
                 "destination_airport": dest_airport,
                 "destination_name": dest_city,
-                # Pre-formatted card — Claude must copy this verbatim
-                "card": (
-                    f"DESTINO: {dest_city} ({dest_airport})\n"
-                    f"CLASSE:  {travel_class_label}\n"
-                    f"PRECO:   R$ {price:,.0f} total  ·  R$ {per_person:,.0f}/pessoa\n"
-                    f"DATAS:   Ida {outbound_date}  Volta {return_date}  ({nights_str})\n"
-                    f"IDA:     {out.get('route', '')}  [{out.get('duration_str', '')}]\n"
-                    f"VOLTA:   {ret.get('route', '')}  [{ret.get('duration_str', '')}]\n"
-                    f"CIA:     {', '.join(out.get('airlines', []))}"
-                ),
+                "_departure_token": item.get("departure_token"),
+                "_card_meta": {
+                    "dest_city": dest_city,
+                    "dest_airport": dest_airport,
+                    "price": price,
+                    "per_person": per_person,
+                    "nights_str": nights_str,
+                    "out": out,
+                    "ret": {},
+                },
             })
 
-        if ranking == "price_only":
-            offers.sort(key=lambda x: x.get("price_brl") or float("inf"))
-        else:
-            offers.sort(key=lambda x: (x.get("price_brl") or float("inf"), x.get("total_stops", 0)))
         return offers
