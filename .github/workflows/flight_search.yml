@@ -1,12 +1,14 @@
-name: Japan Flight Search
+name: Flight Search
 
 on:
   schedule:
-    # 09:00 UTC = 06:00 BRT (UTC-3)
-    - cron: "0 9 * * *"
-    # 21:00 UTC = 18:00 BRT (UTC-3)
-    - cron: "0 21 * * *"
+    # 09:00 UTC = 06:00 BRT (UTC-3) — 2x por semana (segunda e quinta)
+    - cron: "0 9 * * 1,4"
   workflow_dispatch:
+
+concurrency:
+  group: flight-search
+  cancel-in-progress: false
 
 jobs:
   search-flights:

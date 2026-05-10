@@ -1,0 +1,48 @@
+# Configuração da busca de passagens.
+# Edite este arquivo e faça commit — o agente usará a nova config no próximo run.
+# Você pode editar direto pela interface web do GitHub.
+
+trip:
+  # Origem: pode ser uma cidade ("São Paulo") ou um IATA único ("GRU").
+  # Cidades expandem para múltiplos aeroportos (ex.: São Paulo -> [GRU, CGH, VCP]).
+  origin: "São Paulo"
+
+  # Destino: país OU cidade. País expande para todos os aeroportos do país.
+  # Exemplos: "Japão", "Tóquio", "Portugal", "Lisboa", "Argentina".
+  destination: "Japão"
+
+  # Duração da viagem em noites (valor único).
+  nights: 25
+
+  # Janela de meses para a data de IDA (formato YYYY-MM).
+  # O código expande para datas concretas dentro do intervalo.
+  window:
+    start: "2026-09"
+    end:   "2026-11"
+
+  adults: 2
+
+search:
+  # Classe ÚNICA por execução. Para experimentar outra, edite e faça commit.
+  # Valores: economy | premium_economy | business | first
+  # business/first/premium_economy só são aceitos para destinos fora do Brasil.
+  class: economy
+
+  # Quantas ofertas (cards com IDA + VOLTA) o agente deve mostrar no email final.
+  # O agente compila o TOP entre todas as buscas que fizer no run.
+  top_offers: 5
+
+  # Quantas voltas detalhadas buscar por chamada de search_flights.
+  # Cada volta consome 1 crédito SerpApi extra. Use 2 para variedade sem estourar quota.
+  returns_per_search: 2
+
+  # Critério de ranqueamento:
+  #   price_then_stops -> preço asc, depois nº de escalas asc
+  #   price_only       -> apenas preço
+  ranking: "price_then_stops"
+
+  # Orçamento total de créditos SerpApi por execução.
+  # Cada search_flights = 1 (ida) + returns_per_search (voltas) créditos.
+  # Com returns_per_search=2 → 3 créditos por search → max 11 permite 3 searches/run.
+  # 3 searches × 9 runs/mês (2x/semana) = 81/mês. Cabe no free (100/mês).
+  max_serpapi_calls: 11
