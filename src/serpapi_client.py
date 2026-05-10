@@ -28,10 +28,7 @@ _NAME_SUFFIXES = (
     " International Airport", " Airport", " International", " Intl",
 )
 
-JAPAN_AIRPORTS = {
-    "NRT", "HND", "KIX", "ITM", "NGO", "FUK", "CTS", "OKA",
-    "KMJ", "OIT", "KOJ", "SDJ", "HIJ", "TAK",
-}
+_DEFAULT_DESTINATION_AIRPORTS: set[str] = set()
 
 
 def _city_name(airport_id: str, airport_name: str) -> str:
@@ -117,6 +114,10 @@ class SerpAPIClient:
         return_date: str,
         adults: int = 2,
         currency: str = "BRL",
+        travel_class: int = 1,
+        travel_class_label: str = "Econômica",
+        destination_airports: set[str] | None = None,
+        ranking: str = "price_then_stops",
     ) -> list[dict]:
         params = {
             "engine": "google_flights",
@@ -127,6 +128,7 @@ class SerpAPIClient:
             "adults": adults,
             "currency": currency,
             "type": "1",
+            "travel_class": travel_class,
             "hl": "en",
             "gl": "us",
             "api_key": self._api_key,
@@ -146,7 +148,16 @@ class SerpAPIClient:
         if "error" in data:
             raise SerpAPIError(0, data["error"])
 
-        return self._parse_results(data, outbound_date, return_date, arrival_id)
+        return self._parse_results(
+            data,
+            outbound_date,
+            return_date,
+            arrival_id,
+            adults=adults,
+            travel_class_label=travel_class_label,
+            destination_airports=destination_airports or _DEFAULT_DESTINATION_AIRPORTS,
+            ranking=ranking,
+        )
 
     @staticmethod
     def _parse_results(
@@ -154,6 +165,10 @@ class SerpAPIClient:
         outbound_date: str,
         return_date: str,
         arrival_id: str,
+        adults: int,
+        travel_class_label: str,
+        destination_airports: set[str],
+        ranking: str,
     ) -> list[dict]:
         from datetime import datetime
 
@@ -167,14 +182,14 @@ class SerpAPIClient:
 
             outbound_legs: list[dict] = []
             return_legs: list[dict] = []
-            reached_japan = False
+            reached_destination = False
 
             for leg in flights:
                 arr_id = leg.get("arrival_airport", {}).get("id", "")
-                if not reached_japan:
+                if not reached_destination:
                     outbound_legs.append(leg)
-                    if arr_id in JAPAN_AIRPORTS or arr_id == arrival_id:
-                        reached_japan = True
+                    if arr_id == arrival_id or arr_id in destination_airports:
+                        reached_destination = True
                 else:
                     return_legs.append(leg)
 
@@ -188,6 +203,7 @@ class SerpAPIClient:
             out = _summarize_legs(outbound_legs)
             ret = _summarize_legs(return_legs)
             price = item.get("price", 0)
+            total_stops = out.get("num_stops", 0) + ret.get("num_stops", 0)
 
             try:
                 nights = (
@@ -198,8 +214,11 @@ class SerpAPIClient:
             except Exception:
                 nights_str = ""
 
+            per_person = price / adults if adults > 0 else price
+
             offers.append({
                 "price_brl": price,
+                "total_stops": total_stops,
                 "outbound_date": outbound_date,
                 "return_date": return_date,
                 "destination_airport": dest_airport,
@@ -207,7 +226,8 @@ class SerpAPIClient:
                 # Pre-formatted card — Claude must copy this verbatim
                 "card": (
                     f"DESTINO: {dest_city} ({dest_airport})\n"
-                    f"PRECO:   R$ {price:,.0f} total  ·  R$ {price/2:,.0f}/pessoa\n"
+                    f"CLASSE:  {travel_class_label}\n"
+                    f"PRECO:   R$ {price:,.0f} total  ·  R$ {per_person:,.0f}/pessoa\n"
                     f"DATAS:   Ida {outbound_date}  Volta {return_date}  ({nights_str})\n"
                     f"IDA:     {out.get('route', '')}  [{out.get('duration_str', '')}]\n"
                     f"VOLTA:   {ret.get('route', '')}  [{ret.get('duration_str', '')}]\n"
@@ -215,5 +235,8 @@ class SerpAPIClient:
                 ),
             })
 
-        offers.sort(key=lambda x: x.get("price_brl") or 0)
+        if ranking == "price_only":
+            offers.sort(key=lambda x: x.get("price_brl") or float("inf"))
+        else:
+            offers.sort(key=lambda x: (x.get("price_brl") or float("inf"), x.get("total_stops", 0)))
         return offers

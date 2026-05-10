@@ -1,0 +1,40 @@
+# Configuração da busca de passagens.
+# Edite este arquivo e faça commit — o agente usará a nova config no próximo run.
+# Você pode editar direto pela interface web do GitHub.
+
+trip:
+  # Origem: pode ser uma cidade ("São Paulo") ou um IATA único ("GRU").
+  # Cidades expandem para múltiplos aeroportos (ex.: São Paulo -> [GRU, CGH, VCP]).
+  origin: "São Paulo"
+
+  # Destino: país OU cidade. País expande para todos os aeroportos do país.
+  # Exemplos: "Japão", "Tóquio", "Portugal", "Lisboa", "Argentina".
+  destination: "Japão"
+
+  # Duração da viagem em noites (valor único).
+  nights: 25
+
+  # Janela de meses para a data de IDA (formato YYYY-MM).
+  # O código expande para datas concretas dentro do intervalo.
+  window:
+    start: "2026-09"
+    end:   "2026-11"
+
+  adults: 2
+
+search:
+  # Classe ÚNICA por execução. Para experimentar outra, edite e faça commit.
+  # Valores: economy | premium_economy | business | first
+  # business/first/premium_economy só são aceitos para destinos fora do Brasil.
+  class: economy
+
+  # Quantas ofertas mostrar no email.
+  top_offers: 5
+
+  # Critério de ranqueamento:
+  #   price_then_stops -> preço asc, depois nº de escalas asc
+  #   price_only       -> apenas preço
+  ranking: "price_then_stops"
+
+  # Limite duro de chamadas SerpApi por execução (proteção de quota: 100/mês grátis).
+  max_serpapi_calls: 2

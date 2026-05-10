@@ -1,75 +1,86 @@
 import logging
+
 import anthropic
-from src.tools import TOOLS, dispatch_tool
-from src.serpapi_client import SerpAPIClient
+
 from src import config
+from src.serpapi_client import SerpAPIClient
+from src.tools import CallCounter, build_tools, dispatch_tool
+from src.trip_config import TripConfig
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = f"""You are a flight search assistant helping two travelers find the cheapest
-round-trip flights from São Paulo (GRU) to Japan between September and December 2026.
-Trip duration: {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights. Travelers: {config.ADULTS} adults.
+
+def build_system_prompt(trip_cfg: TripConfig) -> str:
+    origin_codes = ", ".join(trip_cfg.origin_airports)
+    dest_codes = ", ".join(trip_cfg.destination_airports)
+    window_label = f"{trip_cfg.window_start.isoformat()} a {trip_cfg.window_end.isoformat()}"
+
+    return f"""You are a flight search assistant helping {trip_cfg.adults} traveler(s) find round-trip
+flights from {trip_cfg.origin_label} ({origin_codes}) to {trip_cfg.destination_label} ({dest_codes}).
+Trip duration: exactly {trip_cfg.nights} nights. Travel class: {trip_cfg.travel_class_label}.
 
 ## Search strategy
 
-You have a limited SerpApi quota (100 calls/month). Make at most 2 calls per run.
+You have a limited SerpApi quota. Make at most {trip_cfg.max_serpapi_calls} calls per run.
 
-Choose departure dates from the window {config.SEARCH_WINDOW_START} to {config.SEARCH_WINDOW_END}.
-Return dates must be 21–30 days after departure, no later than 2026-12-31.
+Choose departure dates from the window {trip_cfg.window_start.isoformat()} to {trip_cfg.window_end.isoformat()}.
+Return date must be exactly {trip_cfg.nights} days after departure.
 
-Suggested approach:
-1. First call: NRT (Tokyo Narita) with a mid-October departure (e.g. 2026-10-10, return 2026-11-04 = 25 nights).
-   October is typically cheaper for GRU→Japan routes.
-2. Optional second call: KIX (Osaka Kansai) with a late-September departure
-   (e.g. 2026-09-25, return 2026-10-20) if the first result seems expensive (> R$ 12.000/pessoa).
+Pick the most promising destination airport(s) to compare. Vary the dates slightly across runs
+based on the run timestamp so the full window is explored over time.
 
-IMPORTANT: Always use specific airport codes — NRT, HND, KIX, NGO, FUK.
-Do NOT use city codes like TYO or OSA — they return no results in this API.
-
-Based on the run timestamp, vary the dates slightly to explore the full window over time.
+IMPORTANT: Always use specific airport IATA codes ({dest_codes}). Do NOT use city codes
+like TYO or OSA — they return no results in this API.
 
 ## Output format
 
-After collecting results, compile the {config.TOP_OFFERS} cheapest unique options and format a
+After collecting results, compile the {trip_cfg.top_offers} cheapest unique options and format a
 plain-text email body (no markdown asterisks, backticks, or bold syntax).
 
 Use exactly this structure:
 
-✈️ TOP {config.TOP_OFFERS} PASSAGENS GRU → JAPÃO
-Período: set–dez 2026 | 2 adultos | {config.MIN_NIGHTS}–{config.MAX_NIGHTS} noites
-(adicione uma nota: passagens saindo de GRU; quem parte de BSB precisa incluir BSB→GRU)
+✈️ TOP {trip_cfg.top_offers} PASSAGENS — {trip_cfg.origin_label} → {trip_cfg.destination_label} ({trip_cfg.travel_class_label})
+Período: {window_label} | {trip_cfg.adults} adulto(s) | {trip_cfg.nights} noites
+(nota: passagens saindo de {trip_cfg.origin_label}; verifique deslocamento até o aeroporto)
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For each option (cheapest first):
+For each option (cheapest first), copy the pre-formatted "card" field VERBATIM from the tool
+result, prefixed with "🏆 #N":
 
-🏆 #N — [Cidade] ([código])
-💰 R$ [preço total] · R$ [preço/pessoa]/pessoa
-📅 Ida: [YYYY-MM-DD]   Volta: [YYYY-MM-DD]
-🛫 Ida: [rota completa ex: GRU → NRT] ([duração])
-🛬 Volta: [rota completa ex: NRT → GRU] ([duração])
-✈️  [companhias aéreas]
+🏆 #N
+[card content from tool result]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Close with:
 🤖 Agente de Viagens · [timestamp]
 
 Rules:
-- Route must list every airport in the itinerary
-- If no results are found, say so clearly
+- Route must list every airport in the itinerary (the card already does this)
+- If no results are found, say so clearly with a short explanation
 - Return ONLY the formatted message — no extra explanation or code blocks"""
 
 
-def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
+def run_agent(
+    serpapi_client: SerpAPIClient,
+    run_timestamp: str,
+    trip_cfg: TripConfig,
+) -> str:
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    system = SYSTEM_PROMPT.replace("[timestamp]", run_timestamp)
+    system = build_system_prompt(trip_cfg).replace("[timestamp]", run_timestamp)
+    tools = build_tools(trip_cfg)
+    counter = CallCounter(trip_cfg.max_serpapi_calls)
 
     messages = [
         {
             "role": "user",
             "content": (
                 f"Current time: {run_timestamp}. "
-                f"Search for the cheapest round-trip flights GRU → Japan "
-                f"(Sep–Dec 2026, {config.MIN_NIGHTS}–{config.MAX_NIGHTS} nights, "
-                f"{config.ADULTS} adults) and return the formatted email body."
+                f"Search for the cheapest round-trip flights {trip_cfg.origin_label} → "
+                f"{trip_cfg.destination_label} (window {trip_cfg.window_start.isoformat()} to "
+                f"{trip_cfg.window_end.isoformat()}, {trip_cfg.nights} nights, "
+                f"{trip_cfg.adults} adult(s), class {trip_cfg.travel_class_label}) and return "
+                f"the formatted email body."
             ),
         }
     ]
@@ -86,7 +97,7 @@ def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
             model="claude-opus-4-5",
             max_tokens=4096,
             system=system,
-            tools=TOOLS,
+            tools=tools,
             messages=messages,
         )
         last_response = response
@@ -96,6 +107,7 @@ def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
         if response.stop_reason == "end_turn":
             for block in response.content:
                 if hasattr(block, "text"):
+                    logger.info("SerpApi calls used this run: %d/%d", counter.count, counter.limit)
                     return block.text
             return "Erro: agente não retornou texto final."
 
@@ -104,13 +116,16 @@ def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
             for block in response.content:
                 if block.type == "tool_use":
                     logger.info(
-                        "Tool call: %s(arrival_id=%s, outbound=%s, return=%s)",
+                        "Tool call: %s(departure=%s, arrival=%s, outbound=%s, return=%s)",
                         block.name,
+                        block.input.get("departure_id"),
                         block.input.get("arrival_id"),
                         block.input.get("outbound_date"),
                         block.input.get("return_date"),
                     )
-                    result_str = dispatch_tool(block.name, block.input, serpapi_client)
+                    result_str = dispatch_tool(
+                        block.name, block.input, serpapi_client, trip_cfg, counter
+                    )
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -122,6 +137,7 @@ def run_agent(serpapi_client: SerpAPIClient, run_timestamp: str) -> str:
         break
 
     logger.warning("Agent reached max iterations (%d)", max_iterations)
+    logger.info("SerpApi calls used this run: %d/%d", counter.count, counter.limit)
     if last_response:
         for block in last_response.content:
             if hasattr(block, "text") and block.text:
